@@ -1,0 +1,12 @@
+# One Slack channel per line. Lines starting with # and blank lines are ignored.
+# Inline `# comments` after a value are also stripped.
+#
+# Either of these formats works — both resolve to the same channel ID:
+#   C01234ABCDE
+#   https://lambda.slack.com/archives/C01234ABCDE
+#
+# Channel IDs come from the Slack URL after "/archives/".
+
+# Example entries — replace with your own channels:
+# C01234ABCDE
+# https://yourworkspace.slack.com/archives/C09MYP5K4H4

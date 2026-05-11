@@ -1,0 +1,10 @@
+# Generated artifacts — do not check in
+dumps/
+summaries/
+mcp-server.log
+
+# Each user maintains their own channel list
+channels.txt
+
+# macOS junk
+.DS_Store
