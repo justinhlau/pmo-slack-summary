@@ -2,6 +2,8 @@
 
 Local pipeline that exports the previous business day's messages from a fixed list of Slack channels, runs them through Claude, and produces a styled HTML summary.
 
+Repo: https://github.com/justinhlau/pmo-slack-summary · License: MIT
+
 End-to-end runtime is ~30–40s for ~8 channels with light traffic.
 
 ---
@@ -296,25 +298,14 @@ URLs need to be in markdown link syntax `[label](url)`, not in backticks. The pr
 
 ## Sharing with teammates
 
-Everything in this directory (except your `dumps/`, `summaries/`, `mcp-server.log`, and your personal `channels.txt`) is portable and identical between users — same prompt, same script, same install steps. The `.gitignore` already excludes the per-user artifacts.
+This repo lives at **https://github.com/justinhlau/pmo-slack-summary**.
 
-### Distribution
-
-The simplest path is a git repo:
-
-```bash
-cd ~/slack-summary
-git init
-git add .gitignore README.md install.sh run.sh prompt.md channels.txt.example
-git commit -m "Slack daily summarizer"
-git remote add origin <your-repo-url>
-git push -u origin main
-```
+Everything in it (except `dumps/`, `summaries/`, `mcp-server.log`, and `channels.txt`) is portable and identical between users — same prompt, same script, same install steps. The `.gitignore` excludes the per-user artifacts.
 
 Teammates clone and install:
 
 ```bash
-git clone <your-repo-url> ~/slack-summary
+git clone https://github.com/justinhlau/pmo-slack-summary.git ~/slack-summary
 cd ~/slack-summary
 ./install.sh
 ```
@@ -333,7 +324,7 @@ The clone can live anywhere — `run.sh` resolves its own directory at runtime, 
 
 ```bash
 # 1. clone + install
-git clone <your-repo-url> ~/slack-summary
+git clone https://github.com/justinhlau/pmo-slack-summary.git ~/slack-summary
 cd ~/slack-summary
 ./install.sh
 
@@ -377,5 +368,12 @@ $EDITOR channels.txt
 | `summaries/<date>.html` | Styled HTML summary (gitignored) |
 | `mcp-server.log` | Log file from any auto-launched MCP server (gitignored) |
 | `.gitignore` | Excludes generated/personal files |
+| `LICENSE` | MIT license |
 | `~/Library/Caches/slackdump/<workspace>.bin` | Cached Slackdump auth credentials |
 | `~/.claude.json` | Claude Code config — must contain the `local-mcp` HTTP entry (added by `install.sh`) |
+
+---
+
+## License
+
+[MIT](LICENSE) — see the `LICENSE` file.
