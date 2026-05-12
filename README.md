@@ -14,16 +14,31 @@ End-to-end runtime is ~30–60s for ~8 channels with light traffic.
 ## Quick start
 
 ```bash
-# 1. (one-time) populate the channel list
-$EDITOR ~/slack-summary/channels.txt
+# 1. clone + install (one-time)
+git clone https://github.com/justinhlau/pmo-slack-summary.git ~/slack-summary
+cd ~/slack-summary
+./install.sh
 
-# 2. run whenever you want a fresh summary
-~/slack-summary/run.sh
+# 2. one-time auth flows (each opens a browser)
+slackdump workspace new <workspace-slug>   # e.g. 'lambda' for https://lambda.slack.com
+claude                                      # log in then exit
+
+# 3. add the channels you want summarized
+$EDITOR channels.txt
+
+# 4. run it (and any day after)
+./run.sh
 ```
 
+`install.sh` is idempotent — it installs `slackdump`, `cmark-gfm`, and the Claude Code CLI (skipping any already present), registers the Slackdump MCP server with Claude Code at user scope, and seeds `channels.txt` from the template. The clone can live anywhere — `run.sh` resolves its own directory at runtime, so paths aren't pinned to `~/slack-summary/`.
+
 Output (named after the day the report was generated, not the day being summarized):
-- `~/slack-summary/summaries/<today>.html` — open in your browser
-- `~/slack-summary/summaries/<today>.md` — same content as markdown
+- `summaries/<today>.html` — open in your browser
+- `summaries/<today>.md` — same content as markdown
+
+### What each user keeps local (gitignored)
+
+`channels.txt`, `dumps/`, `summaries/`, `.last-run`, `mcp-server.log`. Cloning the repo gives you the script and prompt — never anyone else's channel list, reports, or run history. Slack auth caches at `~/Library/Caches/slackdump/<workspace>.bin`; Claude auth caches at `~/.claude/`.
 
 ---
 
@@ -36,28 +51,12 @@ Output (named after the day the report was generated, not the day being summariz
 | `slackdump` | exports Slack messages to a local archive | installed by `install.sh` |
 | `claude` (Claude Code CLI) | runs the summarization prompt headlessly | installed by `install.sh` |
 | `cmark-gfm` | converts markdown summary → HTML | installed by `install.sh` |
+| A Slack account | with access to the channels you want summarized | — |
+| A Claude Code subscription / API access | for the summarization model | — |
 
 `run.sh` also relies on a running **Slackdump MCP server** on `127.0.0.1:8483`. The script auto-launches one if the port isn't already listening (logs to `mcp-server.log`).
 
-### One-time setup (run via `install.sh`)
-
-```bash
-./install.sh
-```
-
-Idempotent — safe to re-run. It installs the three binaries (skipping anything already present) and registers the Slackdump MCP server with Claude Code at user scope.
-
-Two auth flows still need to happen interactively (each only once):
-
-```bash
-# 1. Slackdump → your Slack workspace (browser flow)
-slackdump workspace new <workspace-slug>   # e.g. for https://lambda.slack.com → 'lambda'
-
-# 2. Claude Code → your Anthropic account (browser flow)
-claude   # log in then exit
-```
-
-Credentials are cached at `~/Library/Caches/slackdump/<workspace>.bin` and `~/.claude/` respectively. Re-run the relevant command if you ever see auth errors.
+Re-run `slackdump workspace new <workspace>` or `claude` (then exit) if you ever see auth errors — credentials are cached at `~/Library/Caches/slackdump/<workspace>.bin` and `~/.claude/` respectively.
 
 ---
 
@@ -343,64 +342,6 @@ To re-summarize a specific past period in the second section, manually overwrite
 echo "$(($(date -u +%s) - 14400))" > ~/slack-summary/.last-run
 ~/slack-summary/run.sh
 ```
-
----
-
-## Sharing with teammates
-
-This repo lives at **https://github.com/justinhlau/pmo-slack-summary**.
-
-Everything in it (except `dumps/`, `summaries/`, `mcp-server.log`, and `channels.txt`) is portable and identical between users — same prompt, same script, same install steps. The `.gitignore` excludes the per-user artifacts.
-
-Teammates clone and install:
-
-```bash
-git clone https://github.com/justinhlau/pmo-slack-summary.git ~/slack-summary
-cd ~/slack-summary
-./install.sh
-```
-
-`install.sh` will:
-1. Detect macOS + Homebrew (and stop with a clear error if either is missing)
-2. Install `slackdump`, `cmark-gfm`, and the Claude Code CLI — skipping any already present
-3. Register the `local-mcp` HTTP MCP server with Claude Code at user scope (so it works regardless of which directory `claude` is invoked from)
-4. Create `dumps/` and `summaries/` directories
-5. Copy `channels.txt.example` → `channels.txt` if the user doesn't have one yet
-6. Print the two interactive auth steps remaining (Slackdump workspace + Claude Code login)
-
-The clone can live anywhere — `run.sh` resolves its own directory at runtime, so paths aren't pinned to `~/slack-summary/`.
-
-### What teammates need to do, end to end
-
-```bash
-# 1. clone + install
-git clone https://github.com/justinhlau/pmo-slack-summary.git ~/slack-summary
-cd ~/slack-summary
-./install.sh
-
-# 2. one-time auths
-slackdump workspace new <workspace-slug>     # e.g. 'lambda'
-claude                                        # log in once, then exit
-
-# 3. populate their own channels
-$EDITOR channels.txt
-
-# 4. run it
-./run.sh
-```
-
-### What they need to have
-
-- macOS (Apple Silicon or Intel)
-- Homebrew
-- A Slack account with access to the channels they want to summarize
-- A Claude Code subscription / API access
-
-### What teammates do **not** need to share with you
-
-- Their `channels.txt` (per-user, gitignored)
-- Their Slack creds (cached locally in `~/Library/Caches/slackdump/`)
-- Their Claude Code login (cached locally in `~/.claude/`)
 
 ---
 
