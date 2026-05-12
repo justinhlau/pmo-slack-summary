@@ -40,6 +40,20 @@ Output (named after the day the report was generated, not the day being summariz
 
 `channels.txt`, `dumps/`, `summaries/`, `.last-run`, `mcp-server.log`. Cloning the repo gives you the script and prompt — never anyone else's channel list, reports, or run history. Slack auth caches at `~/Library/Caches/slackdump/<workspace>.bin`; Claude auth caches at `~/.claude/`.
 
+### Updating an existing install
+
+Pull the latest scripts and re-run the installer:
+
+```bash
+cd ~/slack-summary
+git pull
+./install.sh       # idempotent — picks up any new deps
+```
+
+Your `channels.txt`, `dumps/`, `summaries/`, and `.last-run` are gitignored and untouched.
+
+If `git pull` reports conflicts on `run.sh` or `prompt.md`, you've made local edits — `git stash` to set them aside (then `git stash pop` to reapply), or commit them to a branch first.
+
 ---
 
 ## Prerequisites
