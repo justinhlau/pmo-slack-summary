@@ -4,6 +4,10 @@ set -euo pipefail
 DRY_RUN=0
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=1
 
+# Capture script start time (UTC, Unix seconds). Used as the upper bound of
+# the "since last run" window and persisted to .last-run on success.
+SCRIPT_START_TS=$(date -u +%s)
+
 # Resolve the directory the script lives in, so this works whether installed
 # at ~/slack-summary/ or cloned from a repo to any other path.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +15,7 @@ PROMPT_FILE="$DIR/prompt.md"
 CHANNELS_FILE="$DIR/channels.txt"
 SUMMARIES_DIR="$DIR/summaries"
 DUMPS_DIR="$DIR/dumps"
+LAST_RUN_FILE="$DIR/.last-run"
 mkdir -p "$SUMMARIES_DIR" "$DUMPS_DIR"
 
 # Locate slackdump binary
@@ -110,6 +115,35 @@ PREV_DATE=$(date -v-${DAYS_BACK}d +%Y-%m-%d)
 AFTER_TS=$(date -j -u -f "%Y-%m-%d %H:%M:%S" "$PREV_DATE 00:00:00" +%s)
 END_TS=$(date -j -u -f "%Y-%m-%d %H:%M:%S" "$PREV_DATE 23:59:59" +%s)
 
+# Today's local date — used for output filenames so each run's report is
+# named after the day it was generated.
+TODAY=$(date +%Y-%m-%d)
+
+# Since-last-run window (UTC).
+# Read .last-run if present and valid (digits only); default to END_TS+1 (end
+# of biz-day) so first runs cover "everything since end of yesterday".
+# The since-window is always clamped to start at max(LAST_RUN, END_TS+1) so
+# it never overlaps with the previous-business-day section.
+DEFAULT_LAST_RUN=$(( END_TS + 1 ))
+if [ -r "$LAST_RUN_FILE" ] && [[ "$(cat "$LAST_RUN_FILE" 2>/dev/null)" =~ ^[0-9]+$ ]]; then
+  LAST_RUN=$(cat "$LAST_RUN_FILE")
+else
+  LAST_RUN=$DEFAULT_LAST_RUN
+fi
+if [ "$LAST_RUN" -gt "$DEFAULT_LAST_RUN" ]; then
+  SINCE_AFTER_TS=$LAST_RUN
+else
+  SINCE_AFTER_TS=$DEFAULT_LAST_RUN
+fi
+SINCE_BEFORE_TS=$SCRIPT_START_TS
+# Clamp pathological case where SINCE_BEFORE_TS < SINCE_AFTER_TS (e.g. clock skew).
+if [ "$SINCE_BEFORE_TS" -lt "$SINCE_AFTER_TS" ]; then
+  SINCE_BEFORE_TS=$SINCE_AFTER_TS
+fi
+SINCE_FROM_HUMAN=$(date -u -r "$SINCE_AFTER_TS" +"%Y-%m-%d %H:%M:%S UTC")
+SINCE_TO_HUMAN=$(date -u -r "$SINCE_BEFORE_TS" +"%Y-%m-%d %H:%M:%S UTC")
+DUMP_TIME_TO=$(date -u -r "$SINCE_BEFORE_TS" +"%Y-%m-%dT%H:%M:%S")
+
 # Read channels. Skip blanks/comments, strip inline comments, and accept
 # either bare IDs (C09MYP5K4H4) or full Slack URLs
 # (https://workspace.slack.com/archives/C09MYP5K4H4[/p123...][?query]) —
@@ -123,9 +157,9 @@ if [ -z "$CHANNELS" ] && [ "$DRY_RUN" -eq 0 ]; then
   exit 1
 fi
 
-DUMP_ZIP="$DUMPS_DIR/$PREV_DATE.zip"
-OUT="$SUMMARIES_DIR/$PREV_DATE.md"
-HTML_OUT="$SUMMARIES_DIR/$PREV_DATE.html"
+DUMP_ZIP="$DUMPS_DIR/$TODAY.zip"
+OUT="$SUMMARIES_DIR/$TODAY.md"
+HTML_OUT="$SUMMARIES_DIR/$TODAY.html"
 
 # Substitute placeholders into the prompt
 PROMPT=$(cat "$PROMPT_FILE")
@@ -134,18 +168,27 @@ PROMPT=${PROMPT//\{\{END_TS\}\}/$END_TS}
 PROMPT=${PROMPT//\{\{PREV_DATE\}\}/$PREV_DATE}
 PROMPT=${PROMPT//\{\{CHANNELS\}\}/$CHANNELS}
 PROMPT=${PROMPT//\{\{DUMP_ZIP\}\}/$DUMP_ZIP}
+PROMPT=${PROMPT//\{\{SINCE_AFTER_TS\}\}/$SINCE_AFTER_TS}
+PROMPT=${PROMPT//\{\{SINCE_BEFORE_TS\}\}/$SINCE_BEFORE_TS}
+PROMPT=${PROMPT//\{\{SINCE_FROM_HUMAN\}\}/$SINCE_FROM_HUMAN}
+PROMPT=${PROMPT//\{\{SINCE_TO_HUMAN\}\}/$SINCE_TO_HUMAN}
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "=== DRY RUN ==="
-  echo "claude binary    : $CLAUDE_BIN"
-  echo "slackdump binary : $SLACKDUMP_BIN"
-  echo "cmark-gfm binary : $CMARK_BIN"
-  echo "prev date        : $PREV_DATE  (DOW today=$DOW, days back=$DAYS_BACK)"
-  echo "after_ts         : $AFTER_TS"
-  echo "end_ts           : $END_TS"
-  echo "channels file    : $CHANNELS_FILE ($CHANNEL_COUNT id(s))"
-  echo "dump zip         : $DUMP_ZIP"
-  echo "summary out (md) : $OUT"
+  echo "claude binary     : $CLAUDE_BIN"
+  echo "slackdump binary  : $SLACKDUMP_BIN"
+  echo "cmark-gfm binary  : $CMARK_BIN"
+  echo "today (local)     : $TODAY"
+  echo "prev biz date     : $PREV_DATE  (DOW today=$DOW, days back=$DAYS_BACK)"
+  echo "biz-day window    : $AFTER_TS .. $END_TS"
+  echo "                    ($PREV_DATE 00:00:00 UTC .. 23:59:59 UTC)"
+  echo "state file        : $LAST_RUN_FILE ($([ -f "$LAST_RUN_FILE" ] && cat "$LAST_RUN_FILE" || echo 'absent — first run'))"
+  echo "since-last-run    : $SINCE_AFTER_TS .. $SINCE_BEFORE_TS"
+  echo "                    ($SINCE_FROM_HUMAN .. $SINCE_TO_HUMAN)"
+  echo "channels file     : $CHANNELS_FILE ($CHANNEL_COUNT id(s))"
+  echo "dump zip          : $DUMP_ZIP"
+  echo "dump window       : ${PREV_DATE}T00:00:00 .. $DUMP_TIME_TO  (UTC)"
+  echo "summary out (md)  : $OUT"
   echo "summary out (html): $HTML_OUT"
   echo "--- rendered prompt ---"
   printf '%s\n' "$PROMPT"
@@ -153,15 +196,15 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
-# Step 1: dump the day's messages from each channel into a fresh zip.
-# Use `export` (Slack-export format with users.json bundled) so the MCP
-# server can resolve user IDs to display names.
-echo "Dumping $PREV_DATE for $CHANNEL_COUNT channel(s) -> $DUMP_ZIP" >&2
+# Step 1: dump messages covering both windows (biz day + since-last-run)
+# into a single zip. Use `export` (Slack-export format with users.json
+# bundled) so the MCP server can resolve user IDs to display names.
+echo "Dumping ${PREV_DATE}T00:00:00 .. $DUMP_TIME_TO UTC for $CHANNEL_COUNT channel(s) -> $DUMP_ZIP" >&2
 rm -rf "$DUMP_ZIP" "${DUMP_ZIP%.zip}"
 # shellcheck disable=SC2086 -- $CHANNELS is intentionally word-split into channel-id args
 "$SLACKDUMP_BIN" export \
   -time-from "${PREV_DATE}T00:00:00" \
-  -time-to "${PREV_DATE}T23:59:59" \
+  -time-to "$DUMP_TIME_TO" \
   -files=false \
   -channel-users \
   -y \
@@ -192,7 +235,7 @@ echo "Rendering HTML -> $HTML_OUT" >&2
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Slack summary — $PREV_DATE</title>
+<title>Slack summary — $TODAY</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
          max-width: 860px; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.55;
@@ -219,5 +262,11 @@ HTML_HEAD
   echo "</body></html>"
 } > "$HTML_OUT"
 
+# Step 5: persist the script-start timestamp so the next run's since-window
+# starts here. Atomic write — only advance the marker on full success.
+printf '%s\n' "$SCRIPT_START_TS" > "$LAST_RUN_FILE.tmp"
+mv "$LAST_RUN_FILE.tmp" "$LAST_RUN_FILE"
+
 echo "Done: $OUT" >&2
 echo "      $HTML_OUT" >&2
+echo "      .last-run advanced to $SCRIPT_START_TS" >&2

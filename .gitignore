@@ -2,6 +2,7 @@
 dumps/
 summaries/
 mcp-server.log
+.last-run
 
 # Each user maintains their own channel list
 channels.txt
